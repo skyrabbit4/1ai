@@ -38,12 +38,13 @@ import { useUser } from "@/hooks/useUser";
 import Link from "next/link";
 import { useExecutionContext } from "@/contexts/execution-context";
 import { Execution } from "@/hooks/useExecution";
+import { BACKEND_URL } from "@/lib/utils";
 
 export function UIStructure() {
   const [uiExecutions, setUiExecutions] = useState<Execution[]>([]);
   const [hoverChatId, setHoverChatId] = useState<string>("");
   const [isAppsDialogOpen, setIsAppsDialogOpen] = useState(false);
-  const { executions, loading, createNewExecution } = useExecutionContext();
+  const { executions, loading, createNewExecution, refreshExecutions } = useExecutionContext();
   const router = useRouter();
 
   useEffect(() => {
@@ -52,12 +53,33 @@ export function UIStructure() {
     }
   }, [executions]);
 
-  const handleDeleteExecution = (executionId: string) => {
+  const handleDeleteExecution = async (executionId: string) => {
     try {
+      // Optimistically update UI first
+      setUiExecutions(prev => prev.filter((execution) => execution.id !== executionId));
+      
+      // Make API call to delete from backend
+      const response = await fetch(`${BACKEND_URL}/execution/${executionId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+
+      if (!response.ok) {
+        // Revert UI change if API call fails
+        setUiExecutions(executions);
+        throw new Error("Failed to delete execution");
+      }
+
       toast.success("Chat deleted successfully");
-      setUiExecutions(executions.filter((execution) => execution.id !== executionId));
+      // Refresh executions to ensure consistency
+      await refreshExecutions();
     } catch (error) {
       console.error("Error deleting chat:", error);
+      toast.error("Failed to delete chat");
+      // Revert UI change
+      setUiExecutions(executions);
     }
   };
 
@@ -145,9 +167,9 @@ export function UIStructure() {
                               className="flex items-center justify-center rounded-md"
                               onClick={(e) => {
                                 e.preventDefault();
-                                const shareLink =
-                                  process.env.NEXT_PUBLIC_APP_URL +
-                                  `/chat/share/${execution.id}`;
+                                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                                               (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3002');
+                                const shareLink = `${baseUrl}/chat/share/${execution.id}`;
                                 navigator.clipboard.writeText(shareLink);
                                 toast.success("Share link copied to clipboard");
                               }}
@@ -160,7 +182,10 @@ export function UIStructure() {
 
                             <div
                               className="flex items-center justify-center rounded-md"
-                              onClick={() => handleDeleteExecution(execution.id)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDeleteExecution(execution.id);
+                              }}
                             >
                               <TrashIcon
                                 weight={"bold"}

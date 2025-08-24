@@ -1,6 +1,15 @@
 import { BACKEND_URL } from "@/lib/utils";
-import { User } from "@prisma/client";
 import { useEffect, useState } from "react";
+
+interface User {
+  id: string;
+  email: string;
+  name?: string;
+  credits: number;
+  isPremium: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const useUser = () => {
     const [user, setUser] = useState<User | null>(null);

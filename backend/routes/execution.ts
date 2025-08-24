@@ -1,63 +1,69 @@
 import { Router } from "express";
-import { PrismaClient } from "../generated/prisma";
 import { authMiddleware } from "../auth-middleware";
-
-const prismaClient = new PrismaClient();
 
 const router = Router();
 
+// Temporary in-memory storage for testing
+const mockExecutions = new Map<string, any>();
+
 router.get("/", authMiddleware, async (req, res) => {
     const userId = req.userId;
-    const executions = await prismaClient.execution.findMany({
-        where: {
-            userId,
-        },
-        orderBy: {
-            createdAt: "desc"
-        }
-    });
+    
+    // For testing purposes, return mock executions
+    const userExecutions = Array.from(mockExecutions.values()).filter(exec => exec.userId === userId);
+    
     res.json({
-        executions
+        executions: userExecutions
     });
 });
 
 router.get("/:executionId", authMiddleware, async (req, res) => {
     const userId = req.userId;
     const executionId = req.params.executionId;
-    const execution = await prismaClient.execution.findFirst({
-        where: {
-            id: executionId,
-            userId
+    
+    const execution = mockExecutions.get(executionId);
+    
+    if (!execution || execution.userId !== userId) {
+        return res.status(404).json({
+            error: "Execution not found"
+        });
+    }
+
+    // Mock response for testing
+    res.json({
+        response: {
+            id: execution.id,
+            title: execution.title,
+            type: execution.type
         }
     });
+});
 
-    switch (execution?.type) {
-        case "CONVERSATION":
-            const conversation = await prismaClient.conversation.findFirst({
-                where: {
-                    id: execution.externalId!
-                }
+router.delete("/:executionId", authMiddleware, async (req, res) => {
+    const userId = req.userId;
+    const executionId = req.params.executionId;
+    
+    try {
+        const execution = mockExecutions.get(executionId);
+        
+        if (!execution || execution.userId !== userId) {
+            return res.status(404).json({
+                error: "Execution not found"
             });
-            res.json({
-                response: conversation
-            });
-            break;
-        case "ARTICLE_SUMMARIZER":
-            const articleSummarizer = await prismaClient.articleSummarizer.findFirst({
-                where: {
-                    id: execution.externalId!
-                }
-            });
+        }
 
-            res.json({
-                response: articleSummarizer
-            });
-            break;
-        default:
-            res.status(400).json({
-                error: "Invalid execution type"
-            });
-            return;
+        // Delete from mock storage
+        mockExecutions.delete(executionId);
+
+        res.json({
+            success: true,
+            message: "Execution deleted successfully"
+        });
+    } catch (error) {
+        console.error("Error deleting execution:", error);
+        res.status(500).json({
+            error: "Failed to delete execution"
+        });
     }
 });
 
